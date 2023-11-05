@@ -50,6 +50,8 @@ static const int detail_function_biased_multiply                = 0;
 static const int detail_function_multiply                       = 1;
 static const int detail_function_biased_add                     = 2;
 
+#define USE_GEARBOX_CHANNEL_ORDER
+
 half4 ShaderModel(
 	PS_INPUT i,
 	uniform const int nReflectionMask,
@@ -70,9 +72,9 @@ half4 ShaderModel(
 	half4 c_fog_color_correction_E = constants[2];
 	half4 c_fog_color_correction_1 = constants[3];
 	half4 c_self_illumination_color = constants[4];
-	float c_alpha_ref = constants[5].w;
+	float c_alpha_ref = constants[5].x;
 	half4 c_fog_color = constants[6];
-	
+
 	half4 base_map = Texture0.Sample(TexSampler0, Tex0);
 	half4 detail_map = Texture1.Sample(TexSampler1, Tex1);
 	half4 multipurpose_map = Texture2.Sample(TexSampler2, Tex2);
@@ -83,36 +85,39 @@ half4 ShaderModel(
 
 	// c_self_illumination_color == 0 for reflection_mask_base_and_detail_map
 	half3 diffuse_light = saturate(Diff.rgb + multipurpose_map.g * c_self_illumination_color.rgb);
-
 	half specular_reflection_mask;
-	if(nReflectionMask==reflection_mask_multipurpose_map)
-	{
-		// c_self_illumination_color.w -> use xbox channel order
-		multipurpose_map.rgba = lerp(multipurpose_map.rgba, multipurpose_map.agrb, c_self_illumination_color.w);
+
+	if (nReflectionMask == reflection_mask_multipurpose_map) {
+		#ifdef USE_GEARBOX_CHANNEL_ORDER
+			// c_self_illumination_color.w -> use gearbox channel order
+			multipurpose_map.rgba = lerp(multipurpose_map.bgar, multipurpose_map.rgba, c_self_illumination_color.w);
+		#else
+			// c_self_illumination_color.w -> use xbox channel order
+			multipurpose_map.rgba = lerp(multipurpose_map.rgba, multipurpose_map.agrb, c_self_illumination_color.w);
+		#endif
 		specular_reflection_mask = multipurpose_map.b;
 		SRCALPHA = base_map.a;
-	}
-	else if(nReflectionMask==reflection_mask_base_and_detail_map)
-	{
+	} else if (nReflectionMask == reflection_mask_base_and_detail_map) {
 		// environment shader
 		specular_reflection_mask = base_map.a * detail_map.a;
 		SRCALPHA = multipurpose_map.a;
 	}
-	
+
 	specular_reflection_mask *= Spec.a;
-	
+
 	half3 color_change = lerp(1, c_primary_change_color.rgb, multipurpose_map.a);
 
 	half detail_mask;
-	if(nDetailMask==detail_mask_none)
-	{
+	if (nDetailMask==detail_mask_none) {
 		detail_mask = 1;
 	}
-	else if(nDetailMask==detail_mask_reflection_mask_inverse)
+	//else if(nDetailMask==detail_mask_reflection_mask_inverse)
+	else if(nDetailMask==detail_mask_reflection_mask)
 	{
 		detail_mask = 1 - multipurpose_map.b;
 	}
-	else if(nDetailMask==detail_mask_reflection_mask)
+	//else if(nDetailMask==detail_mask_reflection_mask)
+	else if(nDetailMask==detail_mask_reflection_mask_inverse)
 	{
 		detail_mask = multipurpose_map.b;
 	}
@@ -161,7 +166,7 @@ half4 ShaderModel(
 	diffuse_light	*= color_change;
 
 	half3 lit_texture_and_reflection;
-	if(bDetailBeforeReflection)
+	if(!bDetailBeforeReflection)
 	{
 		if(detail_function_biased_multiply==nDetailFunction)
 		{

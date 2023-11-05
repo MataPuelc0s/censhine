@@ -1,6 +1,7 @@
 export LUA_PATH='./?.lua;./src/lua/lua_modules/?.lua;./src/lua/lua_modules/fs/?.lua;./src/lua/lua_modules/?/init.lua'
 export SHADER_PATH='./src/game/rasterizer/dx9/shaders'
 export SHADER_COMPILE_CMD="luajit src/lua/compile.lua $SHADER_PATH/pixel"
+set -e
 
 ################################################################################
 ## Compile the pixel shaders
@@ -28,11 +29,11 @@ $SHADER_COMPILE_CMD/transparent_plasma/transparent_plasma.fx
 
 # Models
 $SHADER_COMPILE_CMD/model/model_environment.fx
-#$SHADER_COMPILE_CMD/model/model_mask_change_color.fx
-#$SHADER_COMPILE_CMD/model/model_mask_multipurpose.fx
-#$SHADER_COMPILE_CMD/model/model_mask_none.fx
-#$SHADER_COMPILE_CMD/model/model_mask_reflection.fx
-#$SHADER_COMPILE_CMD/model/model_mask_self_illumination.fx
+$SHADER_COMPILE_CMD/model/model_mask_change_color.fx
+$SHADER_COMPILE_CMD/model/model_mask_multipurpose.fx
+$SHADER_COMPILE_CMD/model/model_mask_none.fx
+$SHADER_COMPILE_CMD/model/model_mask_reflection.fx
+$SHADER_COMPILE_CMD/model/model_mask_self_illumination.fx
 
 # Environment fog
 $SHADER_COMPILE_CMD/environment/environment_fog.fx
