@@ -43,6 +43,40 @@ We are also trying to keep compatibility with dgVoodoo!
 
 There are some plans to bring some removed shaders back like the **"Shader Transparent Generic"**, but that will require something a little bit more complex, stay tuned to more updates.
 
+## About the Xbox channel ordering
+This is a list of the channel ordering for each shader model, this is important to know in order to
+be able to fix shaders, this is the order in which the game version expects to find the channels
+purposes.
+
+As up to this day we still have no way to pass new constants and values to shaders, so we have to
+stick with a fixed channel ordering, this is the order in which the game will send a bitmap to the
+shader, in the future we might be able to read the `use xbox channel ordering` flag from the shader
+tag and use the proper channel ordering, but for now we have to stick with this.
+
+Xbox:
+- ALPHA: Auxiliar Mask
+- RED: Specular
+- GREEN: Illumination
+- BLUE: Color Mask
+
+Gearbox:
+- ALPHA: Color Mask
+- RED: Auxiliar Mask
+- GREEN: Illumination
+- BLUE: Specular
+
+Xbox order -> AGRB
+Gearbox order -> RGBA
+
+Shaders in this codebase expects this order:
+- Auxiliar Mask
+- Illumination
+- Specular
+- Color Mask
+
+So in order to fix shaders using latest shader code we have applied the Gearbox order to the Xbox
+shaders so they can work properly by sacrificing compatibility with the Xbox order in the process.
+
 # Screenshots
 Here are some 2K screenshots demonstrating changes between the broken shaders and the fixed ones, just
 to show a few, shaders include other fixes that require looking at them in game to appreciate:
