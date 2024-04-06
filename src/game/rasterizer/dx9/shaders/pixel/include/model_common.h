@@ -107,42 +107,35 @@ half4 ShaderModel(
 
 	half3 color_change = lerp(1, c_primary_change_color.rgb, multipurpose_map.a);
 
-	half detail_mask;
-	if (nDetailMask==detail_mask_none) {
-		detail_mask = 1;
-	}
-	//else if(nDetailMask==detail_mask_reflection_mask_inverse)
-	else if(nDetailMask==detail_mask_reflection_mask)
-	{
+	// Originally there was an if here assigning detail_mask to 1 if nDetailMask == detail_mask_none
+	// but it was removed because it is kind of pointless
+	half detail_mask = 1;
+
+	// Reflection mask
+	if (nDetailMask == detail_mask_reflection_mask_inverse) {
 		detail_mask = 1 - multipurpose_map.b;
-	}
-	//else if(nDetailMask==detail_mask_reflection_mask)
-	else if(nDetailMask==detail_mask_reflection_mask_inverse)
-	{
+	} else if (nDetailMask == detail_mask_reflection_mask) {
 		detail_mask = multipurpose_map.b;
 	}
-	else if(nDetailMask==detail_mask_self_illumination_mask_inverse)
-	{
+	// Self illumination mask
+	else if (nDetailMask == detail_mask_self_illumination_mask_inverse) {
 		detail_mask = 1 - multipurpose_map.g;
 	}
-	else if(nDetailMask==detail_mask_self_illumination_mask)
-	{
+	else if (nDetailMask == detail_mask_self_illumination_mask) {
 		detail_mask = multipurpose_map.g;
 	}
-	else if(nDetailMask==detail_mask_change_color_mask_inverse)
-	{
+	// Change color mask
+	else if (nDetailMask == detail_mask_change_color_mask_inverse) {
 		detail_mask = 1 - multipurpose_map.a;
 	}
-	else if(nDetailMask==detail_mask_change_color_mask)
-	{
+	else if (nDetailMask == detail_mask_change_color_mask) {
 		detail_mask = multipurpose_map.a;
 	}
-	else if(nDetailMask==detail_mask_multipurpose_alpha_mask_inverse)
-	{
+	// Multipurpose alpha mask
+	else if (nDetailMask == detail_mask_multipurpose_alpha_mask_inverse) {
 		detail_mask = 1 - multipurpose_map.r;
 	}
-	else if(nDetailMask==detail_mask_multipurpose_alpha_mask)
-	{
+	else if (nDetailMask == detail_mask_multipurpose_alpha_mask) {
 		detail_mask = multipurpose_map.r;
 	}
 
