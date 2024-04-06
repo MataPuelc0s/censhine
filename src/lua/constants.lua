@@ -9,9 +9,9 @@ if jit.os == "Linux" then
     binaries.decrypt = "wine " .. binaries.decrypt
     binaries.fxc = "wine " .. binaries.fxc
 else
-    binaries.encrypt = "cmd /c " .. binaries.encrypt:gsub("/", "\\")
-    binaries.decrypt = "cmd /c " .. binaries.decrypt:gsub("/", "\\")
-    binaries.fxc = "cmd /c " .. binaries.fxc:gsub("/", "\\")
+    binaries.encrypt = "cmd /c " .. binaries.encrypt:replace("/", "\\")
+    binaries.decrypt = "cmd /c " .. binaries.decrypt:replace("/", "\\")
+    binaries.fxc = "cmd /c " .. binaries.fxc:replace("/", "\\")
 end
 
 local separators = {Windows = "\\", Linux = "/"}
@@ -793,5 +793,10 @@ return {
     pixelShaderFunctions = pixelShaderFunctions,
     pixelShaderFunctionMapping = pixelShaderFunctionMapping,
     binaries = binaries,
-    separators = separators
+    separators = separators,
+    extensions = {compiledShaderObject = ".cso"},
+    commands = {
+        dissamble = binaries.fxc .. [[ %s /nologo /dumpbin /Fx %s]],
+        decrypt = binaries.decrypt .. [[ "%s" -o "%s"]]
+    }
 }
