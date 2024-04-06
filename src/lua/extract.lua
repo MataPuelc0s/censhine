@@ -1,20 +1,11 @@
+local luna = require "src.lua.lua_modules.luna"
 local argparse = require "argparse"
-local glue = require "glue"
 local constants = require "src.lua.constants"
-local split = glue.string.split
 local inspect = require "inspect"
 local fs = require "fs"
 require "compat53"
 local vertexShaderNames = constants.vertexShaderNames
-local binaries = constants.binaries
-
-function uint32(input)
-    return string.unpack("I", input)
-end
-
-function wuint32(input)
-    return string.pack("I", input)
-end
+require "src.lua.censhine.binary"
 
 local parser = argparse("extract", "Extract shaders from dec files")
 parser:argument("shadersFilePath", "Path to the binary shaders file")
@@ -25,29 +16,36 @@ parser:flag("--keepversion", "Keep shader version in output")
 parser:flag("--preparebuild", "Prepare build folder with extracted shaders")
 local args = parser:parse()
 
-local dissambleCmd = binaries.fxc .. [[ %s /nologo /dumpbin /Fx %s]]
-
+args.shadersFilePath = args.shadersFilePath:replace("\\", "/")
 local shadersFile = io.open(args.shadersFilePath, "rb")
 if args.decrypt then
-    local decryptCmd = binaries.decrypt .. [[ "%s" -o "%s"]]
-    os.execute(decryptCmd:format(args.shadersFilePath, args.shadersFilePath:gsub(".enc", ".dec")))
-    shadersFile = io.open(args.shadersFilePath:gsub(".enc", ".dec"), "rb")
+    local decryptCmdTemplate = constants.commands.decrypt
+    local decryptedFilePath = args.shadersFilePath:replace(".enc", ".dec")
+    local decryptCmd = decryptCmdTemplate:format(args.shadersFilePath, decryptedFilePath)
+    assert(os.execute(decryptCmd), "Could not decrypt file")
+    shadersFile = io.open(decryptedFilePath, "rb")
 end
-local fileString = glue.readfile(args.shadersFilePath, "b")
+
+local fileString = luna.binary.read(args.shadersFilePath)
+assert(fileString, "Could not read shaders file: " .. args.shadersFilePath)
 local shaderFileSize = #fileString
 local vertexShaderCount = 1
-
+-- https://learn.microsoft.com/en-us/windows/win32/direct3dhlsl/dx-graphics-hlsl-part1
+local outputExtension = constants.extensions.compiledShaderObject
 local pixelShaderNames = {}
 local pixelShaderFunctionNames = {}
+
 assert(shadersFile, "Could not open file " .. args.shadersFilePath)
 if shadersFile then
-    local splitPath = glue.string.split(args.shadersFilePath:gsub("\\", "/"), "/")
-    local shadersFileName = glue.string.split(splitPath[#splitPath], ".")[1]
+    local splitPath = args.shadersFilePath:split "/"
+    local shadersFileName = splitPath[#splitPath]:split(".")[1]
     local dumpPath = "dump/shaders/" .. shadersFileName .. "/"
     if args.preparebuild then
         dumpPath = "build/" .. shadersFileName .. "/"
-        print("Dump path:", dumpPath)
-        assert(fs.is(dumpPath), "Could not find dump path")
+        if not fs.is(dumpPath) then
+            fs.mkdir(dumpPath, true)
+        end
+        assert(fs.is(dumpPath), "Could not create build folder")
     end
 
     if not args.vertex then
@@ -56,24 +54,24 @@ if shadersFile then
     end
 
     local function extractPixelShaders()
-        -- print("cursor", glue.string.tohex(shaderContent:seek()))
+        -- print("cursor", string.tohex(shaderContent:seek()))
         local shaderNameSize = uint32(shadersFile:read(4))
         local shaderName = shadersFile:read(shaderNameSize)
-        local shaderPath = dumpPath .. "/" .. shaderName
-        fs.mkdir(shaderPath, true)
-        print("Shader: " .. shaderName)
         local shaderCount = uint32(shadersFile:read(4))
-        print("Shader: " .. shaderName, "Functions: " .. shaderCount)
+        local shaderPath = dumpPath .. "/" .. shaderName
+        print("Shader: " .. shaderName)
+        print("Functions: " .. shaderCount)
+        assert(fs.mkdir(shaderPath, true), "Could not create shader folder")
         pixelShaderFunctionNames[shaderName] = {}
         for shaderIndex = 1, shaderCount do
             -- Get shader function name and shader size
             local pixelShaderFunctionNameSize = uint32(shadersFile:read(4))
             local pixelShaderFunctionName = shadersFile:read(pixelShaderFunctionNameSize)
             local pixelShaderSize = uint32(shadersFile:read(4)) * 4
-            print("Function: " .. pixelShaderFunctionName, "Size: " .. pixelShaderSize .. " bytes")
+            print(pixelShaderFunctionName .. " (" .. pixelShaderSize .. " bytes)")
 
             -- Get shader version components
-            local splitName = split(pixelShaderFunctionName, "_")
+            local splitName = pixelShaderFunctionName:split "_"
             local minorVersion = splitName[#splitName]
             local majorVersion = splitName[#splitName - 1]
 
@@ -90,20 +88,23 @@ if shadersFile then
             local pixelShaderVersion = uint32(shadersFile:read(4))
             local directX9ByteCode = shadersFile:read(pixelShaderSize - 4)
             local shader = {wuint32(pixelShaderVersion), directX9ByteCode}
-            local shaderFinalPath = shaderPath .. "/" .. pixelShaderFunctionNameNoVersion .. ".dxbc"
+            local shaderFinalPath = shaderPath .. "/" .. pixelShaderFunctionNameNoVersion ..
+                                        outputExtension
             if args.keepversion then
-                shaderFinalPath = shaderPath .. "/" .. pixelShaderFunctionName .. ".dxbc"
+                shaderFinalPath = shaderPath .. "/" .. pixelShaderFunctionName .. outputExtension
             end
-            glue.writefile(shaderFinalPath, table.concat(shader, ""), "b")
+            luna.binary.write(shaderFinalPath, table.concat(shader, ""))
             if args.decompile then
-                os.execute(dissambleCmd:format(shaderFinalPath, shaderFinalPath .. ".debug"))
+                os.execute(constants.commands.dissamble:format(shaderFinalPath,
+                                                               shaderFinalPath .. ".debug"))
             end
         end
-        print("-")
+        print(
+            "--------------------------------------------------------------------------------------------------------------")
     end
 
     local function extractVertexShaders()
-        -- print("cursor", glue.string.tohex(shaderContent:seek()))
+        -- print("cursor", string.tohex(shaderContent:seek()))
         local byteCodeSize = uint32(shadersFile:read(4))
         local shaderName = vertexShaderNames[vertexShaderCount] or ("vsh_" .. vertexShaderCount)
         print("Shader name: " .. shaderName, "Size: " .. byteCodeSize)
@@ -111,12 +112,13 @@ if shadersFile then
         local pixelShaderVersion = uint32(shadersFile:read(4))
         local directX9ByteCode = shadersFile:read(byteCodeSize - 4)
         local shader = {wuint32(pixelShaderVersion), directX9ByteCode}
-        local shaderFinalPath = dumpPath .. shaderName .. ".dxbc"
+        local shaderFinalPath = dumpPath .. shaderName .. outputExtension
         print(shaderFinalPath)
-        glue.writefile(shaderFinalPath, table.concat(shader, ""), "b")
+        luna.binary.write(shaderFinalPath, table.concat(shader, ""))
 
         if args.decompile then
-            os.execute(dissambleCmd:format(shaderFinalPath, shaderFinalPath .. ".debug"))
+            os.execute(constants.commands.dissamble:format(shaderFinalPath,
+                                                           shaderFinalPath .. ".debug"))
         end
 
         vertexShaderCount = vertexShaderCount + 1

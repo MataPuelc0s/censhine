@@ -1,10 +1,6 @@
 local argparse = require "argparse"
 local glue = require "glue"
-local readfile = glue.readfile
-local keys = glue.keys
-local index = glue.index
-local split = glue.string.split
-local ends = glue.string.ends
+local luna = require "src.lua.lua_modules.luna"
 local md5 = require "md5"
 local fs = require "fs"
 require "compat53"
@@ -13,19 +9,7 @@ local vertexShaderNames = constants.vertexShaderNames
 local pixelShaderNames = constants.pixelShaderNames
 local pixelShaderFunctions = constants.pixelShaderFunctions
 local binaries = constants.binaries
-
-local function uint32(input)
-    return string.unpack("I", input)
-end
-local function wuint32(input)
-    return string.pack("I", input)
-end
-local function byte(input)
-    return string.unpack("B", input)
-end
-local function wbyte(input)
-    return string.pack("B", input)
-end
+require "src.lua.censhine.binary"
 
 local parser = argparse("build", "Build shaders for Halo Custom Edition from dxbc files")
 parser:argument("shadersPath", "Path to directX byte code shader files")
@@ -33,8 +17,9 @@ parser:flag("--vertex", "Build vertex shaders")
 parser:flag("--verifystock", "Verify stock shaders")
 parser:flag("--encrypt", "Encrypt shaders output file")
 parser:flag("--verbose", "Verbose output")
+parser:flag("--unknown", "Include unknown shaders")
 local args = parser:parse()
-local splitPath = glue.string.split(args.shadersPath, "/")
+local splitPath = args.shadersPath:split "/"
 local shadersFileName = splitPath[#splitPath]
 local shadersOutputPath = "dist/"
 fs.mkdir(shadersOutputPath, true)
@@ -60,21 +45,26 @@ local pixelShaders = {}
 local vertexShaders = {}
 
 for shaderName, shaderFolderEntry in fs.dir(args.shadersPath) do
+    assert(shaderName)
+    print("Bulding shader: " .. shaderName)
     if not args.vertex then
         local shaders = {}
-        for shaderFunctionFile, shaderDxbcEntry in fs.dir(shaderFolderEntry:path()) do
-            if ends(shaderFunctionFile, ".dxbc") then
-                local shaderFunctionName = shaderFunctionFile:gsub(".dxbc", "")
-                local byteCode = readfile(shaderDxbcEntry:path(), "b")
+        for shaderFunctionFile, shaderCSOEntry in fs.dir(shaderFolderEntry:path()) do
+            assert(shaderFunctionFile)
+            if shaderFunctionFile:endswith(constants.extensions.compiledShaderObject) then
+                local shaderFunctionName = shaderFunctionFile:replace(constants.extensions
+                                                                          .compiledShaderObject, "")
+                assert(pixelShaderFunctions[shaderName], "Unknown pixel shader: " .. shaderName)
+                local byteCode = luna.binary.read(shaderCSOEntry:path())
+                assert(byteCode, "Could not read shader file: " .. shaderCSOEntry:path())
                 local minorVersion = byte(byteCode:sub(1))
                 local majorVersion = byte(byteCode:sub(2))
-                local functionName = shaderFunctionName:gsub("PS_", ""):gsub(("_ps_%s_%s"):format(
-                                                                                 majorVersion,
-                                                                                 minorVersion), "")
+                local version = ("_ps_%s_%s"):format(majorVersion, minorVersion)
+                local functionName = shaderFunctionName:replace("PS_", ""):replace(version, "")
                 -- print(shaderName, shaderFunctionName, functionName, majorVersion, minorVersion)
                 local pixelShaderFunctionIndex = pixelShaderFunctions[shaderName][functionName]
                 if not pixelShaderFunctionIndex then
-                    print("ERROR!!! Unknown pixel shader function: " .. shaderName .. " " ..
+                    print("ERROR! Unknown pixel shader function: " .. shaderName .. " " ..
                               shaderFunctionName)
                     os.exit(1)
                 end
@@ -83,14 +73,28 @@ for shaderName, shaderFolderEntry in fs.dir(args.shadersPath) do
                 shaders[pixelShaderFunctionIndex] = {shaderFunctionNameWithVersion, byteCode}
             end
         end
-        local pixelShaderIndex = index(pixelShaderNames)[shaderName]
-        pixelShaders[pixelShaderIndex] = {shaderName, shaders}
-    else
-        if ends(shaderName, ".dxbc") then
-            local byteCode = readfile(shaderFolderEntry:path(), "b")
-            local vertexShaderName = shaderName:gsub(".dxbc", "")
-            local vertexShaderIndex = index(vertexShaderNames)[vertexShaderName] or
-                                          tonumber(split(vertexShaderName, "vsh_")[2])
+        local pixelShaderIndex = table.indexof(pixelShaderNames, shaderName)
+        if pixelShaderIndex then
+            pixelShaders[pixelShaderIndex] = {shaderName, shaders}
+        else
+            if not args.unknown then
+                print("Warning! Unknown pixel shader has been added: " .. shaderName)
+                print("Do you want to continue? (y/n)")
+                local response = io.read()
+                if response:lower() ~= "y" then
+                    os.exit(1)
+                end
+            end
+        end
+    end
+    if args.vertex then
+        if shaderName:endswith(constants.extensions.compiledShaderObject) then
+            local byteCode = luna.binary.read(shaderFolderEntry:path())
+            assert(shaderName)
+            local vertexShaderName = shaderName:replace(constants.extensions.compiledShaderObject,
+                                                        "")
+            local vertexShaderIndex = table.flip(vertexShaderNames)[vertexShaderName] or
+                                          tonumber(vertexShaderName:split("vsh_")[2])
             if vertexShaderIndex then
                 vertexShaders[vertexShaderIndex] = byteCode
             end
@@ -105,7 +109,7 @@ if not args.vertex then
         local shaders = shaderData[2]
         shadersFile:write(wuint32(#shaderName))
         shadersFile:write(shaderName)
-        shadersFile:write(wuint32(#keys(shaders)))
+        shadersFile:write(wuint32(#table.keys(shaders)))
         for shaderFunctionIndex, shaderData in pairs(shaders) do
             local shaderFunctionName = shaderData[1]
             log("Function " .. shaderFunctionIndex .. ": " .. shaderFunctionName)
