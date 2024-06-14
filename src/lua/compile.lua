@@ -6,6 +6,8 @@ local constants = require "src.lua.constants"
 local vertexShaderNames = constants.vertexShaderNames
 local pixelShaderFunctionMapping = constants.pixelShaderFunctionMapping
 local binaries = constants.binaries
+require "src.lua.censhine.binary"
+local luna = require "src.lua.lua_modules.luna"
 
 local fxcPath = binaries.fxc
 local fxCompilerCommand = fxcPath ..
@@ -18,24 +20,6 @@ function toCamelCase(str)
     str = "_" .. str
     return string.gsub(str:gsub("_", " "), "%W%l", string.upper):sub(1):gsub(" ", "")
 end
-local function byte(input)
-    return string.unpack("B", input)
-end
-local function wbyte(input)
-    return string.pack("B", input)
-end
-local function uint16(input)
-    return string.unpack("H", input)
-end
-local function wuint16(input)
-    return string.pack("H", input)
-end
-local function uint32(input)
-    return string.unpack("I", input)
-end
-local function wuint32(input)
-    return string.pack("I", input)
-end
 
 local parser = argparse("compile", "Compile Halo Custom Edition shaders to dxbc files")
 parser:argument("shadersPath", "Path to the source shader file")
@@ -46,112 +30,96 @@ parser:flag("--vertex", "Compile vertex shaders")
 parser:flag("--compatible", "Compile shaders using backwards compatible flag")
 parser:flag("--keepversion", "Keep shader version in the output file")
 parser:flag("--disable", "Disable shader at compilation, it will appear black in game")
-parser:flag("--ps30", "Compile shader for shader 3_0")
+parser:flag("--s30", "Compile shader for shader 3_0")
 local args = parser:parse()
 
-local pixelShaderVersion = "2_0"
-local shaderClass = "ps"
-local splitPath = glue.string.split(args.shadersPath, "/")
+local profileVersion = "2_0"
+local profileClass = "ps"
+local shaderByteCodeStartPattern = ".3111\0"
+assert(fs.is(args.shadersPath), "Error: Shader file " .. args.shadersPath .. " does not exist")
+local splitPath = args.shadersPath:split "/"
 local shadersFileName = splitPath[#splitPath]
-local shadersOutput = "build/EffectCollection_ps_2_0/"
-if args.shader3 then
-    pixelShaderVersion = "3_0"
-    shadersOutput = "build/EffectCollection_ps_3_0/"
+if args.s30 then
+    profileVersion = "3_0"
 end
+local shaderCompiledExtension = ".cso"
+local shadersOutput = "build/EffectCollection_" .. profileClass .. "_" .. profileVersion .. "/"
 
-local shaderBinaryName = shadersFileName:gsub(".psh", ""):gsub(".vsh", ""):gsub(".fx", "")
+local shaderBinaryName = shadersFileName:replace(".psh", ""):replace(".vsh", ""):replace(".fx", "")
 local shaderFilesPath = shadersOutput .. shaderBinaryName
-local directXByteCodePathWithVersion = shaderFilesPath .. "/PS_%s_ps_%s_%s" .. ".dxbc"
-local directXByteCodePath = shaderFilesPath .. "/PS_%s" .. ".dxbc"
+local directXByteCodePathWithVersion = shaderFilesPath .. "/PS_%s_ps_%s_%s" .. shaderCompiledExtension
+local directXByteCodePath = shaderFilesPath .. "/PS_%s" .. shaderCompiledExtension
 
 if args.compatible then
     fxCompilerCommand = fxCompilerCommand .. [[ /Gec]]
 end
 if args.vertex then
-    shaderClass = "vs"
+    profileClass = "vs"
     shadersOutput = "build/vsh"
     shaderFilesPath = shadersOutput
-    directXByteCodePath = shaderFilesPath .. "/%s" .. ".dxbc"
-else
-    fs.mkdir(shaderFilesPath, true)
+    directXByteCodePath = shaderFilesPath .. "/%s" .. shaderCompiledExtension
+    fxCompilerCommand = fxCompilerCommand:replace("pixel", "vertex")
 end
-fs.mkdir(shadersOutput, true)
+fs.mkdir(shaderFilesPath, true)
 
-local function pixelShaderToDXBC(shaderPath, shaderFunctionName)
+--- Convert a shader file to a dxbc file
+---@param shaderPath string
+---@param shaderFunctionName string?
+---@return boolean
+local function shaderToDXBC(shaderPath, shaderFunctionName)
     local shader = io.open(shaderPath, "rb")
-    if shader then
-        local shaderFileString = glue.readfile(shaderPath, "b")
-        local minorVersion = byte(shader:read(1))
-        local majorVersion = byte(shader:read(1))
-        local shaderDXBCClass = uint16(shader:read(2))
+    assert(shader, "Error can not open shader file")
 
-        local _, bytecodeOffset = shaderFileString:find(".3111\0")
-        shader:seek("set", bytecodeOffset)
+    local shaderFileString = glue.readfile(shaderPath, "b")
+    assert(shaderFileString, "Error can not read shader file")
 
-        local bytecode = shader:read("a")
+    local minorVersion = byte(shader:read(1))
+    local majorVersion = byte(shader:read(1))
+    local shaderDXBCClass = uint16(shader:read(2))
 
-        local dxbc = {wbyte(minorVersion), wbyte(majorVersion), wuint16(shaderDXBCClass), bytecode}
-        local finalDxbcPath = directXByteCodePath:format(shaderFunctionName)
-        if args.keepversion then
-            finalDxbcPath = directXByteCodePathWithVersion:format(shaderFunctionName, majorVersion,
-                                                                  minorVersion)
-        end
-        print(finalDxbcPath)
-        glue.writefile(finalDxbcPath, table.concat(dxbc, ""), "b")
-        debugPath = finalDxbcPath .. ".debug"
-        return true
+    local _, bytecodeOffset = shaderFileString:find(shaderByteCodeStartPattern)
+    shader:seek("set", bytecodeOffset)
+
+    local bytecode = shader:read("a")
+
+    local dxbc = {wbyte(minorVersion), wbyte(majorVersion), wuint16(shaderDXBCClass), bytecode}
+    local finalDxbcPath = directXByteCodePath:format(shaderFunctionName)
+    if args.vertex then
+        finalDxbcPath = directXByteCodePath:format(shaderBinaryName)
     end
-    error("Error can not open shader file")
+    if not args.vertex and args.keepversion then
+        finalDxbcPath = directXByteCodePathWithVersion:format(shaderFunctionName, majorVersion,
+                                                              minorVersion)
+    end
+    --print("DXBC: ", finalDxbcPath)
+    glue.writefile(finalDxbcPath, table.concat(dxbc, ""), "b")
+    debugPath = finalDxbcPath .. ".debug"
+    return true
 end
 
-local function vertexShaderToDXBC(shaderPath)
-    local shader = io.open(shaderPath, "rb")
-    if shader then
-        local shaderFileString = glue.readfile(shaderPath, "b")
-        local minorVersion = byte(shader:read(1))
-        local majorVersion = byte(shader:read(1))
-        local shaderDXBCClass = uint16(shader:read(2))
-
-        local _, bytecodeOffset = shaderFileString:find(".3111\0")
-        shader:seek("set", bytecodeOffset)
-
-        local bytecode = shader:read("a")
-
-        local dxbc = {wbyte(minorVersion), wbyte(majorVersion), wuint16(shaderDXBCClass), bytecode}
-        local finalDxbcPath = directXByteCodePath:format(shaderBinaryName)
-        print(finalDxbcPath)
-        glue.writefile(finalDxbcPath, table.concat(dxbc, ""), "b")
-        debugPath = finalDxbcPath .. ".debug"
-        return true
-    end
-    error("Error can not open shader file")
-end
-
+--local tempShaderPath = os.tmpname():replace("/", "\\") .. shaderBinaryName
+local tempShaderPath = os.tmpname():replace("/", "")
 if args.vertex then
-    local tempShaderPath = os.tmpname():gsub("/", "")
     local compileShaderCmd = fxCompilerCommand:format(args.shadersPath, "main",
-                                                      shaderClass .. "_" .. pixelShaderVersion,
+                                                      profileClass .. "_" .. profileVersion,
                                                       tempShaderPath)
     print(compileShaderCmd)
-    if glue.readpipe(compileShaderCmd, "t"):find("compilation succeeded") then
-        if pcall(vertexShaderToDXBC, tempShaderPath) then
-            local cmd2 = decompilerCommand:format(tempShaderPath, debugPath)
-            if args.decompile then
-                os.execute(cmd2)
-            end
-        end
-    else
-        print("ERROR!!!, shader compilation failed")
+    if not glue.readpipe(compileShaderCmd, "t"):find("compilation succeeded") then
+        print("ERROR!!! shader compilation failed")
         os.exit(1)
     end
-    os.remove(tempShaderPath)
+    if pcall(shaderToDXBC, tempShaderPath) then
+        local cmd2 = decompilerCommand:format(tempShaderPath, debugPath)
+        if args.decompile then
+            os.execute(cmd2)
+        end
+    end
 else
     local shaderCount = 1
     if pixelShaderFunctionMapping[shaderBinaryName] then
         shaderCount = #pixelShaderFunctionMapping[shaderBinaryName]
     end
     for shaderIndex = 1, shaderCount do
-        local tempShaderPath = os.tmpname():gsub("/", "")
         local entryPoint = "main"
         local shaderFunctionName = toCamelCase(shaderBinaryName)
         local shaderPath = args.shadersPath
@@ -164,20 +132,19 @@ else
             entryPoint = "main"
         end
         local compileShaderCmd = fxCompilerCommand:format(shaderPath, entryPoint,
-                                                          shaderClass .. "_" .. pixelShaderVersion,
+                                                          profileClass .. "_" .. profileVersion,
                                                           tempShaderPath)
         print(compileShaderCmd)
-        if glue.readpipe(compileShaderCmd, "t"):find("compilation succeeded") then
-            if pcall(pixelShaderToDXBC, tempShaderPath, shaderFunctionName) then
-                local cmd2 = decompilerCommand:format(tempShaderPath, debugPath)
-                if args.decompile then
-                    os.execute(cmd2)
-                end
-            end
-        else
-            print("ERROR!!!, shader compilation failed")
+        if not glue.readpipe(compileShaderCmd, "t"):find("compilation succeeded") then
+            print("ERROR!!! shader compilation failed")
             os.exit(1)
         end
-        os.remove(tempShaderPath)
+        if pcall(shaderToDXBC, tempShaderPath, shaderFunctionName) then
+            local cmd2 = decompilerCommand:format(tempShaderPath, debugPath)
+            if args.decompile then
+                os.execute(cmd2)
+            end
+        end
     end
 end
+os.remove(tempShaderPath)

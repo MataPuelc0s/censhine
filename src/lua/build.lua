@@ -45,7 +45,7 @@ local pixelShaders = {}
 local vertexShaders = {}
 
 for shaderName, shaderFolderEntry in fs.dir(args.shadersPath) do
-    assert(shaderName)
+    assert(shaderName, "Could not read shader folder entry")
     print("Bulding shader: " .. shaderName)
     if not args.vertex then
         local shaders = {}
