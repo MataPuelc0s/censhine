@@ -1,0 +1,14 @@
+ceds -> sdec -> shaderDecal???
+vnes -> senv -> shaderEnvironment
+osos -> soso -> shaderModel
+rtos -> sotr -> shaderTransparentGeneric
+ihcs -> schi -> shaderTransparentChicago
+xecs -> scex -> shaderTransparentChicagoExtended
+taws -> swat -> shaderTransparentWater
+algs -> sgla -> shaderTransparentGlass
+tems -> smet -> shaderTransparentMeter
+alps -> spla -> shaderTransparentPlasma
+rcss -> sscr -> shaderScreen (not present in CE?)
+
+MAXIMUM_TRANSPARENT_GEOMETRY_GROUPS = 384
+MAXIMUM_NODES_PER_MODEL_GEOMETRY_PART = 22
