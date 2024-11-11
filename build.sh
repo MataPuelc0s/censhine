@@ -122,10 +122,16 @@ $SHADER_COMPILE_CMD/pixel/environment_texture/normal/environment_texture_normal_
 #$SHADER_COMPILE_CMD/pixel/effect_normal_tint_multiply.fx --disable
 #$SHADER_COMPILE_CMD/pixel/effect_normal_tint_multiply_add.fx --disable
 
-#$SHADER_COMPILE_CMD/vertex/transparent_water/transparent_water_opacity.vsh --vertex
-#$SHADER_COMPILE_CMD/vertex/transparent_water/transparent_water_opacity_m.vsh --vertex
-#$SHADER_COMPILE_CMD/vertex/transparent_water/transparent_water_reflection.vsh --vertex
-#$SHADER_COMPILE_CMD/vertex/transparent_water/transparent_water_reflection_m.vsh --vertex
+$SHADER_COMPILE_CMD/vertex/transparent_water/transparent_water_opacity.vsh --vertex
+$SHADER_COMPILE_CMD/vertex/transparent_water/transparent_water_opacity_m.vsh --vertex
+$SHADER_COMPILE_CMD/vertex/transparent_water/transparent_water_reflection.vsh --vertex
+$SHADER_COMPILE_CMD/vertex/transparent_water/transparent_water_reflection_m.vsh --vertex
+
+$SHADER_COMPILE_CMD/vertex/model_fogged/model_fogged.vsh --vertex
+$SHADER_COMPILE_CMD/vertex/model_fog_screen/model_fog_screen.vsh --vertex
+$SHADER_COMPILE_CMD/vertex/model_scenery/model_scenery.vsh --vertex
+$SHADER_COMPILE_CMD/vertex/environment_fog/environment_fog.vsh --vertex
+$SHADER_COMPILE_CMD/vertex/environment_fog_screen/environment_fog_screen.vsh --vertex
 
 ################################################################################
 ## Build shaders
