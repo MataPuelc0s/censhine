@@ -2,12 +2,12 @@ local argparse = require "argparse"
 local glue = require "glue"
 local fs = require "fs"
 require "compat53"
+local luna = require "src.lua.lua_modules.luna"
 local constants = require "src.lua.constants"
 local vertexShaderNames = constants.vertexShaderNames
 local pixelShaderFunctionMapping = constants.pixelShaderFunctionMapping
 local binaries = constants.binaries
 require "src.lua.censhine.binary"
-local luna = require "src.lua.lua_modules.luna"
 
 local fxcPath = binaries.fxc
 local fxCompilerCommand = fxcPath ..
